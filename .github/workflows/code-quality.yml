@@ -33,3 +33,30 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - run: uv sync
       - run: uv run pytest
+  build-and-push:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [check-linter, check-formatter, check-type-safety, run-unit-tests]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/simple-service:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/simple-service:${{ github.sha }}
+
+  deploy:
+    needs: [build-and-push]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+          USER: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: curl -fsS "${HOOK}&imgURL=docker.io%2F${USER}%2Fsimple-service%3A${{ github.sha }}"
+
